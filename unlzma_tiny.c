@@ -1,47 +1,23 @@
 /* vi: set sw=4 ts=4: */
 /*
- * Small lzma deflate implementation.
+ * Small lzma deflate implementation for embedded systems (https://github.com/j-d-r/unlzma_tiny)
+ * Copyright (C) 2018  Julien Dusser <julien.dusser@free.fr>
+ *
+ * Based on decompress_unlzma.c from busybox
  * Copyright (C) 2006  Aurelien Jacobs <aurel@gnuage.org>
  *
  * Based on LzmaDecode.c from the LZMA SDK 4.22 (http://www.7-zip.org/)
  * Copyright (C) 1999-2005  Igor Pavlov
  *
- * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#include "libbb.h"
-#include "bb_archive.h"
 
-#if 0
-# define dbg(...) bb_error_msg(__VA_ARGS__)
-#else
-# define dbg(...) ((void)0)
-#endif
-
-
-#if ENABLE_FEATURE_LZMA_FAST
-#  define speed_inline ALWAYS_INLINE
-#  define size_inline
-#else
-#  define speed_inline
-#  define size_inline ALWAYS_INLINE
-#endif
-
+#include "unlzma_tiny.h"
+#include "unlzma_tiny_config.h"
 
 typedef struct {
-	int fd;
 	uint8_t *ptr;
-
-/* Was keeping rc on stack in unlzma and separately allocating buffer,
- * but with "buffer 'attached to' allocated rc" code is smaller: */
-	/* uint8_t *buffer; */
-#define RC_BUFFER ((uint8_t*)(rc+1))
-
 	uint8_t *buffer_end;
-
-/* Had provisions for variable buffer, but we don't need it here */
-	/* int buffer_size; */
-#define RC_BUFFER_SIZE 0x10000
-
 	uint32_t code;
 	uint32_t range;
 	uint32_t bound;
@@ -52,23 +28,13 @@ typedef struct {
 #define RC_MODEL_TOTAL_BITS 11
 
 
-/* Called once in rc_do_normalize() */
-static void rc_read(rc_t *rc)
-{
-	int buffer_size = safe_read(rc->fd, RC_BUFFER, RC_BUFFER_SIZE);
-//TODO: return -1 instead
-//This will make unlzma delete broken unpacked file on unpack errors
-	if (buffer_size <= 0)
-		bb_error_msg_and_die("unexpected EOF");
-	rc->buffer_end = RC_BUFFER + buffer_size;
-	rc->ptr = RC_BUFFER;
-}
-
 /* Called twice, but one callsite is in speed_inline'd rc_is_bit_1() */
 static void rc_do_normalize(rc_t *rc)
 {
-	if (rc->ptr >= rc->buffer_end)
-		rc_read(rc);
+	if (rc->ptr >= rc->buffer_end) {
+		//TODO: find a way to exit and free probes
+		die("truncated input");
+	}
 	rc->range <<= 8;
 	rc->code = (rc->code << 8) | *rc->ptr++;
 }
@@ -80,27 +46,20 @@ static ALWAYS_INLINE void rc_normalize(rc_t *rc)
 }
 
 /* Called once */
-static ALWAYS_INLINE rc_t* rc_init(int fd) /*, int buffer_size) */
+static ALWAYS_INLINE void rc_init(rc_t* rc, uint8_t *ptr, size_t size)
 {
 	int i;
-	rc_t *rc;
 
-	rc = xzalloc(sizeof(*rc) + RC_BUFFER_SIZE);
-
-	rc->fd = fd;
-	/* rc->ptr = rc->buffer_end; */
+	rc->ptr = ptr;
+	rc->buffer_end = ptr + size;
+	rc->range = 0;
+	rc->code = 0;
+	rc->bound = 0;
 
 	for (i = 0; i < 5; i++) {
 		rc_do_normalize(rc);
 	}
 	rc->range = 0xffffffff;
-	return rc;
-}
-
-/* Called once  */
-static ALWAYS_INLINE void rc_free(rc_t *rc)
-{
-	free(rc);
 }
 
 /* rc_is_bit_1 is called 9 times */
@@ -212,65 +171,77 @@ enum {
 };
 
 
-IF_DESKTOP(long long) int FAST_FUNC
-unpack_lzma_stream(transformer_state_t *xstate)
+size_t
+lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
 {
-	IF_DESKTOP(long long total_written = 0;)
-	lzma_header_t header;
+	lzma_header_t *header = (lzma_header_t *)in_ptr;
+	uint32_t dict_size;
+	uint64_t dst_size;
 	int lc, pb, lp;
 	uint32_t pos_state_mask;
 	uint32_t literal_pos_mask;
-	uint16_t *p;
-	rc_t *rc;
+	uint16_t *p = NULL; //for free
+	rc_t private_rc;
+	rc_t *rc = &private_rc;
 	int i;
 	uint8_t *buffer;
 	uint32_t buffer_size;
 	uint8_t previous_byte = 0;
-	size_t buffer_pos = 0, global_pos = 0;
+	size_t buffer_pos = 0;
 	int len = 0;
 	int state = 0;
 	uint32_t rep0 = 1, rep1 = 1, rep2 = 1, rep3 = 1;
 
-	if (full_read(xstate->src_fd, &header, sizeof(header)) != sizeof(header)
-	 || header.pos >= (9 * 5 * 5)
-	) {
-		bb_error_msg("bad lzma header");
-		return -1;
+	if(in_size < sizeof(lzma_header_t)) {
+		warn("too short lzma file");
+		goto bad;
 	}
 
-	i = header.pos / 9;
-	lc = header.pos % 9;
+	in_ptr += sizeof(lzma_header_t);
+	in_size -= sizeof(lzma_header_t);
+
+	if (header->pos >= (9 * 5 * 5)) {
+		warn("bad lzma header");
+		goto bad;
+	}
+
+	i = header->pos / 9;
+	lc = header->pos % 9;
 	pb = i / 5;
 	lp = i % 5;
 	pos_state_mask = (1 << pb) - 1;
 	literal_pos_mask = (1 << lp) - 1;
 
-	/* Example values from linux-3.3.4.tar.lzma:
-	 * dict_size: 64M, dst_size: 2^64-1
-	 */
-	header.dict_size = SWAP_LE32(header.dict_size);
-	header.dst_size = SWAP_LE64(header.dst_size);
+	/* unaligned access should be handled as struct is packed */
+	dict_size = SWAP_LE32(header->dict_size);
+	dst_size = SWAP_LE64(header->dst_size);
 
-	if (header.dict_size == 0)
-		header.dict_size++;
+	if (dict_size == 0)
+		dict_size++;
 
-	buffer_size = MIN(header.dst_size, header.dict_size);
-	buffer = xmalloc(buffer_size);
+	if(dst_size != ((uint64_t)-1) && out_size < dst_size) {
+		warn("too small output buffer");
+		goto bad;
+	}
+
+	buffer_size = out_size;
+	buffer = out_ptr;
 
 	{
 		int num_probs;
 
 		num_probs = LZMA_BASE_SIZE + (LZMA_LIT_SIZE << (lc + lp));
-		p = xmalloc(num_probs * sizeof(*p));
+		warn("alloc size: %lu", num_probs * sizeof(*p));
+		p = alloc_probs(num_probs * sizeof(*p));
 		num_probs += LZMA_LITERAL - LZMA_BASE_SIZE;
 		for (i = 0; i < num_probs; i++)
 			p[i] = (1 << RC_MODEL_TOTAL_BITS) >> 1;
 	}
 
-	rc = rc_init(xstate->src_fd); /*, RC_BUFFER_SIZE); */
+	rc_init(rc, in_ptr, in_size); /*, RC_BUFFER_SIZE); */
 
-	while (global_pos + buffer_pos < header.dst_size) {
-		int pos_state = (buffer_pos + global_pos) & pos_state_mask;
+	while (buffer_pos < dst_size) {
+		int pos_state = buffer_pos & pos_state_mask;
 		uint16_t *prob = p + LZMA_IS_MATCH + (state << LZMA_NUM_POS_BITS_MAX) + pos_state;
 
 		if (!rc_is_bit_1(rc, prob)) {
@@ -279,7 +250,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 			int mi = 1;
 
 			prob = (p + LZMA_LITERAL
-			        + (LZMA_LIT_SIZE * ((((buffer_pos + global_pos) & literal_pos_mask) << lc)
+			        + (LZMA_LIT_SIZE * (((buffer_pos & literal_pos_mask) << lc)
 			                            + (previous_byte >> (8 - lc))
 			                           )
 			          )
@@ -291,7 +262,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 
 				pos = buffer_pos - rep0;
 				if ((int32_t)pos < 0)
-					pos += header.dict_size;
+					pos += dict_size;
 				match_byte = buffer[pos];
 				do {
 					int bit;
@@ -310,20 +281,8 @@ unpack_lzma_stream(transformer_state_t *xstate)
 			state = next_state[state];
 
 			previous_byte = (uint8_t) mi;
-#if ENABLE_FEATURE_LZMA_FAST
- one_byte1:
-			buffer[buffer_pos++] = previous_byte;
-			if (buffer_pos == header.dict_size) {
-				buffer_pos = 0;
-				global_pos += header.dict_size;
-				if (transformer_write(xstate, buffer, header.dict_size) != (ssize_t)header.dict_size)
-					goto bad;
-				IF_DESKTOP(total_written += header.dict_size;)
-			}
-#else
 			len = 1;
 			goto one_byte2;
-#endif
 		} else {
 			int num_bits;
 			int offset;
@@ -345,20 +304,9 @@ unpack_lzma_stream(transformer_state_t *xstate)
 					        + pos_state
 					);
 					if (!rc_is_bit_1(rc, prob2)) {
-#if ENABLE_FEATURE_LZMA_FAST
-						uint32_t pos;
-						state = state < LZMA_NUM_LIT_STATES ? 9 : 11;
-
-						pos = buffer_pos - rep0;
-						if ((int32_t)pos < 0)
-							pos += header.dict_size;
-						previous_byte = buffer[pos];
-						goto one_byte1;
-#else
 						state = state < LZMA_NUM_LIT_STATES ? 9 : 11;
 						len = 1;
 						goto string;
-#endif
 					}
 				} else {
 					uint32_t distance;
@@ -426,10 +374,12 @@ unpack_lzma_stream(transformer_state_t *xstate)
 						for (; num_bits2 != LZMA_NUM_ALIGN_BITS; num_bits2--)
 							rep0 = (rep0 << 1) | rc_direct_bit(rc);
 						rep0 <<= LZMA_NUM_ALIGN_BITS;
-						if ((int32_t)rep0 < 0) {
-							dbg("%d rep0:%d", __LINE__, rep0);
-							goto bad;
-						}
+						// handle end of stream marker
+						//if ((int32_t)rep0 < 0) {
+						//	dbg("%d rep0:%d", __LINE__, rep0);
+
+							//goto bad;
+						//}
 						prob3 = p + LZMA_ALIGN;
 					}
 					i2 = 1;
@@ -455,60 +405,43 @@ unpack_lzma_stream(transformer_state_t *xstate)
 			 * and
 			 *	do {
 			 *		buffer[buffer_pos++] = buffer[pos];
-			 *		if (++pos == header.dict_size)
+			 *		if (++pos == dict_size)
 			 *			pos = 0;
 			 *	} while (--cur_len != 0);
 			 * Our code is slower (more checks per byte copy):
 			 */
- IF_NOT_FEATURE_LZMA_FAST(string:)
+	string:
 			do {
 				uint32_t pos = buffer_pos - rep0;
 				if ((int32_t)pos < 0) {
-					pos += header.dict_size;
+					pos += dict_size;
 					/* bug 10436 has an example file where this triggers: */
 					//if ((int32_t)pos < 0)
 					//	goto bad;
 					/* more stringent test (see unzip_bad_lzma_1.zip): */
-					if (pos >= buffer_size)
-						goto bad;
 				}
+				if (pos >= buffer_size) {
+					warn("too small output buffer");
+					goto bad;
+				}
+
 				previous_byte = buffer[pos];
- IF_NOT_FEATURE_LZMA_FAST(one_byte2:)
-				buffer[buffer_pos++] = previous_byte;
-				if (buffer_pos == header.dict_size) {
-					buffer_pos = 0;
-					global_pos += header.dict_size;
-					if (transformer_write(xstate, buffer, header.dict_size) != (ssize_t)header.dict_size)
-						goto bad;
-					IF_DESKTOP(total_written += header.dict_size;)
+	one_byte2:
+				if (buffer_pos >= buffer_size) {
+					warn("too small output buffer");
+					goto bad;
 				}
+				buffer[buffer_pos++] = previous_byte;
 				len--;
-			} while (len != 0 && buffer_pos < header.dst_size);
-			/* FIXME: ...........^^^^^
-			 * shouldn't it be "global_pos + buffer_pos < header.dst_size"?
-			 * It probably should, but it is a "do we accidentally
-			 * unpack more bytes than expected?" check - which
-			 * never happens for well-formed compression data...
-			 */
+			} while (len != 0 && buffer_pos < dst_size);
 		}
 	}
 
-	{
-		IF_NOT_DESKTOP(int total_written = 0; /* success */)
-		IF_DESKTOP(total_written += buffer_pos;)
-		if (transformer_write(xstate, buffer, buffer_pos) != (ssize_t)buffer_pos) {
+	free_probs(p);
+	return buffer_pos;
+
  bad:
-			/* One of our users, bbunpack(), expects _us_ to emit
-			 * the error message (since it's the best place to give
-			 * potentially more detailed information).
-			 * Do not fail silently.
-			 */
-			bb_error_msg("corrupted data");
-			total_written = -1; /* failure */
-		}
-		rc_free(rc);
-		free(p);
-		free(buffer);
-		return total_written;
-	}
+	warn("failed");
+	free_probs(p);
+	return (size_t)-1;
 }
