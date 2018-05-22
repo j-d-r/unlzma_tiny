@@ -176,7 +176,7 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
 {
 	lzma_header_t *header = (lzma_header_t *)in_ptr;
 	uint32_t dict_size;
-	uint64_t dst_size;
+	size_t dst_size;
 	int lc, pb, lp;
 	uint32_t pos_state_mask;
 	uint32_t literal_pos_mask;
