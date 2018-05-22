@@ -172,7 +172,7 @@ enum {
 
 
 size_t
-lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
+lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *buffer, size_t buffer_size)
 {
 	lzma_header_t *header = (lzma_header_t *)in_ptr;
 	uint32_t dict_size;
@@ -184,8 +184,6 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
 	rc_t private_rc;
 	rc_t *rc = &private_rc;
 	int i;
-	uint8_t *buffer;
-	uint32_t buffer_size;
 	uint8_t previous_byte = 0;
 	size_t buffer_pos = 0;
 	int len = 0;
@@ -218,9 +216,6 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
 
 	if (dict_size == 0)
 		dict_size++;
-
-	buffer_size = out_size;
-	buffer = out_ptr;
 
 	{
 		int num_probs;
