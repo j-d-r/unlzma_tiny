@@ -219,11 +219,6 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *out_ptr, size_t out_size)
 	if (dict_size == 0)
 		dict_size++;
 
-	if(dst_size != ((uint64_t)-1) && out_size < dst_size) {
-		warn("too small output buffer");
-		goto bad;
-	}
-
 	buffer_size = out_size;
 	buffer = out_ptr;
 
