@@ -268,7 +268,7 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *buffer, size_t buffer_siz
 		int num_probs;
 
 		num_probs = LZMA_BASE_SIZE + (LZMA_LIT_SIZE << (lc + lp));
-		DBG("alloc size: %lu", num_probs * sizeof(*p));
+		DBG("alloc size: %zu", num_probs * sizeof(*p));
 		p = ALLOC_PROBS(num_probs * sizeof(*p));
 		if(!p) {
 			WARN("failed to allocate probs");
