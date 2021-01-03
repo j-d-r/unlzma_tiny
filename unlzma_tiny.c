@@ -55,9 +55,9 @@
 #define speed_inline
 
 typedef struct {
-	uint8_t *ptr;
+	const uint8_t *ptr;
 #ifndef UNSAFE_TRUNCATED_INPUT
-	uint8_t *buffer_end;
+	const uint8_t *buffer_end;
 #endif
 	uint32_t code;
 	uint32_t range;
@@ -89,7 +89,7 @@ static ALWAYS_INLINE void rc_normalize(rc_t *rc)
 }
 
 /* Called once */
-static ALWAYS_INLINE void rc_init(rc_t* rc, uint8_t *ptr, size_t size)
+static ALWAYS_INLINE void rc_init(rc_t* rc, const uint8_t *ptr, size_t size)
 {
 	int i;
 
@@ -219,9 +219,9 @@ enum {
 
 
 size_t
-lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *buffer, size_t buffer_size)
+lzma_inflate(const uint8_t * in_ptr, size_t in_size, uint8_t *restrict buffer, size_t buffer_size)
 {
-	lzma_header_t *header = (lzma_header_t *)in_ptr;
+	const lzma_header_t *header = (const lzma_header_t *)in_ptr;
 	uint32_t dict_size;
 	size_t dst_size;
 	int lc, pb, lp;
