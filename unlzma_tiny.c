@@ -33,11 +33,6 @@
 # define WARN(msg) do { } while(0)
 #endif
 
-/* Wait forever */
-#ifndef DIE
-# define DIE(msg) do { } while(1)
-#endif
-
 /* Use stack */
 #ifndef ALLOC_PROBS
 # include <alloca.h>
@@ -61,7 +56,9 @@
 
 typedef struct {
 	uint8_t *ptr;
+#ifndef UNSAFE_TRUNCATED_INPUT
 	uint8_t *buffer_end;
+#endif
 	uint32_t code;
 	uint32_t range;
 	uint32_t bound;
@@ -74,10 +71,13 @@ typedef struct {
 /* Called twice, but one callsite is in speed_inline'd rc_is_bit_1() */
 static void rc_do_normalize(rc_t *rc)
 {
+#ifndef UNSAFE_TRUNCATED_INPUT
 	if (rc->ptr >= rc->buffer_end) {
-		//TODO: find a way to exit and free probes
-		DIE("truncated input");
+		WARN("truncated input");
+		rc->buffer_end = 0;
+		return;
 	}
+#endif
 	rc->range <<= 8;
 	rc->code = (rc->code << 8) | *rc->ptr++;
 }
@@ -94,7 +94,11 @@ static ALWAYS_INLINE void rc_init(rc_t* rc, uint8_t *ptr, size_t size)
 	int i;
 
 	rc->ptr = ptr;
+#ifndef UNSAFE_TRUNCATED_INPUT
 	rc->buffer_end = ptr + size;
+#else
+	(void)size;
+#endif
 	rc->range = 0;
 	rc->code = 0;
 	rc->bound = 0;
@@ -280,6 +284,11 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *buffer, size_t buffer_siz
 	while (buffer_pos < dst_size) {
 		int pos_state = buffer_pos & pos_state_mask;
 		uint16_t *prob = p + LZMA_IS_MATCH + (state << LZMA_NUM_POS_BITS_MAX) + pos_state;
+
+#ifndef UNSAFE_TRUNCATED_INPUT
+		if (!rc->buffer_end)
+			goto bad;
+#endif
 
 		if (!rc_is_bit_1(rc, prob)) {
 			static const char next_state[LZMA_NUM_STATES] =

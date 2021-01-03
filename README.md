@@ -8,7 +8,8 @@ Main goal is binary size.
 
  - read and write directly into buffers, removed all file handling
  - handle files without compressed size, using a end marker. Can now inflate lzma1 files made with lzma from xz-utils
-  - prefer stack variable for rc\_t
+ - prefer stack variable for rc\_t
+ - reuse buffer\_end to handle truncated input
 
 ## Binary Size
 
