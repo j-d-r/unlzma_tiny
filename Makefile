@@ -9,6 +9,7 @@ VPATH=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 all: $(BIN) size
 
+%.os: CPPFLAGS_EXTRA=-DUNSAFE_TRUNCATED_INPUT
 %.od: CPPFLAGS_EXTRA=-DDEBUG
 
 unlzma_tiny.od unlzma_tiny.os: unlzma_tiny.c unlzma_tiny.h unlzma_tiny_config.h
