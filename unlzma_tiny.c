@@ -223,6 +223,10 @@ lzma_inflate(uint8_t *in_ptr, size_t in_size, uint8_t *buffer, size_t buffer_siz
 		num_probs = LZMA_BASE_SIZE + (LZMA_LIT_SIZE << (lc + lp));
 		warn("alloc size: %lu", num_probs * sizeof(*p));
 		p = alloc_probs(num_probs * sizeof(*p));
+		if(!p) {
+			warn("failed to allocate probs");
+			goto bad;
+		}
 		num_probs += LZMA_LITERAL - LZMA_BASE_SIZE;
 		for (i = 0; i < num_probs; i++)
 			p[i] = (1 << RC_MODEL_TOTAL_BITS) >> 1;
