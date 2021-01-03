@@ -14,13 +14,14 @@
 #include <string.h>
 #include <inttypes.h>
 #include <stddef.h>
+#include <alloca.h>
 
 #if DEBUG
 # define warn(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr);} while(0)
 # define die(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); exit(-1); } while(0)
 #else
 # define warn(...) do { } while(0)
-# define die(...) do { exit(-1); } while(0)
+# define die(...) do { } while(1)
 #endif
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -31,13 +32,8 @@
 # define SWAP_LE64(x) __builtin_bswap64(x)
 #endif
 
-#if USE_ALLOCA
 # define alloc_probs(size) alloca(size)
 # define free_probs(ptr) do { } while(0)
-#else
-# define alloc_probs(size) malloc(size)
-# define free_probs(ptr) free(ptr)
-#endif
 
 #define ALWAYS_INLINE __attribute__ ((always_inline)) inline
 #define PACKED __attribute__ ((__packed__))
