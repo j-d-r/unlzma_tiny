@@ -13,12 +13,14 @@ Main goal is binary size.
 
 ## Binary Size
 
-- Observed binary sizes (without main and libs):
-  - x86\_64: 1.982 bytes
-  - armv7: 1.652 bytes
-  - armv7 thumb: 1.132 bytes
-  - mips: 2.176 bytes
-  - mips16 1.296 bytes
+- Observed binary sizes with GCC 10:
+  - i686: 1.445 bytes
+  - x86\_64: 1.545 bytes
+  - armv7-a thumb: 1.128 bytes
+  - armv7-a: 1.652 bytes
+  - aarch64: 1.756 bytes
+  - mips: 2.016 bytes
+  - mips16 1.456 bytes
 
 ## Build
 
