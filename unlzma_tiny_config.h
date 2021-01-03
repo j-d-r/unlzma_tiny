@@ -8,37 +8,14 @@
 #ifndef UNLZMA_TINY_CONFIG_H_
 #define UNLZMA_TINY_CONFIG_H_
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <inttypes.h>
-#include <stddef.h>
-#include <alloca.h>
-
 #if DEBUG
-# define warn(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr);} while(0)
-# define die(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr); exit(-1); } while(0)
-#else
-# define warn(...) do { } while(0)
-# define die(...) do { } while(1)
+
+# include <stdio.h>
+# include <stdlib.h>
+# define DBG(...) do { fprintf(stderr, __VA_ARGS__); fputc('\n', stderr);} while(0)
+# define WARN(msg) do { fputs(msg "\n", stderr);} while(0)
+# define DIE(msg) do { fputs(msg "\n", stderr); exit(-1); } while(0)
+
 #endif
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-# define SWAP_LE32(x) (x)
-# define SWAP_LE64(x) (x)
-#else
-# define SWAP_LE32(x) __builtin_bswap32(x)
-# define SWAP_LE64(x) __builtin_bswap64(x)
-#endif
-
-# define alloc_probs(size) alloca(size)
-# define free_probs(ptr) do { } while(0)
-
-#define ALWAYS_INLINE __attribute__ ((always_inline)) inline
-#define PACKED __attribute__ ((__packed__))
-#define FAST_FUNC
-
-#define speed_inline
 
 #endif /* UNLZMA_TINY_CONFIG_H_ */

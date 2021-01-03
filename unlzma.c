@@ -28,6 +28,7 @@ int main(int argc, char **argv) {
 
 	out_size = lzma_inflate(in_buff, in_size, out_buff, out_size);
 	if (out_size < 0) {
+		printf("failed to inflate\n");
 		fclose(in_f);
 		free(in_buff);
 		free(out_buff);

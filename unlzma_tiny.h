@@ -5,8 +5,8 @@
 #ifndef UNLZMA_TINY_H_
 #define UNLZMA_TINY_H_
 
-#include <inttypes.h>
-#include <stdlib.h>
+#include <stdint.h>
+#include <stddef.h>
 
 /* Inflate LZMA in_ptr buffer into out_ptr buffer.
  * return decompressed size or (size_t)-1 if failed */
