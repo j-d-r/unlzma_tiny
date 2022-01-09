@@ -35,6 +35,30 @@ Main goal is binary size.
  - unlzma.c: test program for debugging
 
 
+## Update from BusyBox
+
+This code was originally based on busybox commit [8f48fc0](https://git.busybox.net/busybox/commit/?h=1_29_stable&id=8f48fc01e9e43d16bf5860fa37252b43c76cb395) without keeping history.
+A backup tag [unlzma_tiny-2021.01](https://github.com/j-d-r/unlzma_tiny/commit/3e911f553feac1c6b337cdfc685eee6472741ed2) to previous history was kept.
+
+Further changes are merged from a filtered branch obtained with this script:
+
+```bash
+#!/bin/sh
+
+set -e
+
+REF=1_29_0
+
+export FILTER_BRANCH_SQUELCH_WARNING=1
+
+git fetch busybox -t -f
+git checkout $REF -b busybox-filtered
+git filter-branch -f --subdirectory-filter archival/ --prune-empty -- --all
+git filter-branch -f --prune-empty --index-filter "git ls-files | grep -v 'decompress_unlzma.c' | xargs git rm --cached --ignore-unmatch"
+git filter-branch -f --prune-empty --tree-filter "git ls-files | xargs -I '{}' git mv '{}' ./"
+git fetch busybox -t -f
+```
+
 ## Credits
 
 - BusyBox (https://busybox.net) (2006  Aurelien Jacobs)
