@@ -307,8 +307,11 @@ lzma_inflate(const uint8_t * in_ptr, size_t in_size, uint8_t *restrict buffer, s
 				uint32_t pos;
 
 				pos = buffer_pos - rep0;
-				if ((int32_t)pos < 0)
+				if ((int32_t)pos < 0) {
 					pos += dict_size;
+					if ((int32_t)pos < 0)
+						goto bad;
+				}
 				match_byte = buffer[pos];
 				do {
 					int bit;
@@ -420,12 +423,9 @@ lzma_inflate(const uint8_t * in_ptr, size_t in_size, uint8_t *restrict buffer, s
 						for (; num_bits2 != LZMA_NUM_ALIGN_BITS; num_bits2--)
 							rep0 = (rep0 << 1) | rc_direct_bit(rc);
 						rep0 <<= LZMA_NUM_ALIGN_BITS;
-						// handle end of stream marker
-						//if ((int32_t)rep0 < 0) {
-						//	dbg("%d rep0:%d", __LINE__, rep0);
-
-							//goto bad;
-						//}
+						// Note: (int32_t)rep0 may be < 0 here
+						// (I have linux-3.3.4.tar.lzma which has it).
+						// I moved the check after "++rep0 == 0" check below.
 						prob3 = p + LZMA_ALIGN;
 					}
 					i2 = 1;
@@ -436,8 +436,13 @@ lzma_inflate(const uint8_t * in_ptr, size_t in_size, uint8_t *restrict buffer, s
 						i2 <<= 1;
 					}
 				}
-				if (++rep0 == 0)
-					break;
+				rep0++;
+				if ((int32_t)rep0 <= 0) {
+					if (rep0 == 0)
+						break;
+					DBG("%d rep0:%d", __LINE__, rep0);
+					goto bad;
+				}
 			}
 
 			len += LZMA_MATCH_MIN_LEN;
